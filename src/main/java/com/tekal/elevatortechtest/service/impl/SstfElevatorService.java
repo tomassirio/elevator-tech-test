@@ -11,19 +11,19 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
-import java.util.Queue;
-import java.util.Set;
+import java.util.*;
+
 import java.util.concurrent.TimeUnit;
 
 @Service
 @Slf4j
-public class FCFSElevatorService extends ElevatorCallServer implements ElevatorService {
+public class SstfElevatorService extends ElevatorCallServer implements ElevatorService {
 
     private final Set<Elevator> elevators;
     private final Queue<ElevatorCall> elevatorCalls;
 
     @Autowired
-    public FCFSElevatorService(Set<Elevator> elevators, Queue<ElevatorCall> elevatorCalls, PersonService personService, StatisticsService statisticsService) {
+    public SstfElevatorService(Set<Elevator> elevators, Queue<ElevatorCall> elevatorCalls, PersonService personService, StatisticsService statisticsService) {
         super(personService, statisticsService);
         this.elevators = elevators;
         this.elevatorCalls = elevatorCalls;
@@ -45,13 +45,32 @@ public class FCFSElevatorService extends ElevatorCallServer implements ElevatorS
             }
             synchronized (elevators) {
                 for (Elevator elevator : elevators.stream().filter(elevator -> !elevator.isMoving()).toList()) {
-                    ElevatorCall elevatorCall = elevatorCalls.poll();
+                    ElevatorCall elevatorCall = getNextElevatorCall(elevator);
                     if (elevatorCall != null) {
                         log.info("Elevator " + elevator.getElevatorId() + " is not moving, serving call");
                         serveElevatorCall(elevator, elevatorCall);
                     }
                 }
             }
+        }
+    }
+
+    private ElevatorCall getNextElevatorCall(Elevator elevator) {
+        synchronized (elevatorCalls) {
+            if (elevatorCalls.isEmpty()) {
+                return null;
+            }
+
+            // Find the elevator call with the shortest seek time
+            Optional<ElevatorCall> nextCall = elevatorCalls.stream()
+                    .min(Comparator.comparingInt(call -> Math.abs(call.getCalledFromFloor() - elevator.getCurrentFloor())));
+
+            if (nextCall.isPresent()) {
+                elevatorCalls.remove(nextCall.get());
+                return nextCall.get();
+            }
+
+            return null;
         }
     }
 
